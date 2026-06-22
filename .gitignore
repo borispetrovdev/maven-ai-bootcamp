@@ -1,0 +1,40 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Data / models / local artifacts
+data/
+!data/.gitkeep
+*.sqlite
+*.db
+*.duckdb
+chroma/
+*.faiss
+*.index
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Course / experiment outputs
+outputs/
+.cache/
