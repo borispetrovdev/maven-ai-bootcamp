@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 from openai import OpenAI
@@ -24,7 +24,9 @@ def run_llm(
         return (
             client.chat.completions.create(
                 model=model_name,
-                messages=messages,
+                # Plain dicts are the right shape but don't match the SDK's
+                # TypedDict union; deliberately skipping precise typing here.
+                messages=messages,  # pyright: ignore[reportArgumentType]
                 max_completion_tokens=max_tokens,
                 reasoning_effort="minimal",
             )
@@ -36,7 +38,7 @@ def run_llm(
         return (
             client.chat.completions.create(
                 model=model_name,
-                messages=messages,
+                messages=messages,  # pyright: ignore[reportArgumentType]
                 max_completion_tokens=max_tokens,
             )
             .choices[0]
@@ -72,5 +74,8 @@ def chat(request: Request, payload: ChatRequest) -> ChatResponse:
         payload.model_name,
         payload.messages,
     )
+
+    if result is None:
+        raise HTTPException(status_code=502, detail="LLM returned no content")
 
     return ChatResponse(message=result)
