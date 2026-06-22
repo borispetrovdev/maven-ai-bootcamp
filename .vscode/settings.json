@@ -1,0 +1,17 @@
+{
+  "restoreTerminals.terminals": [
+    {
+      "splitTerminals": [
+        { "name": "zsh", "commands": [] },
+        {
+          "name": "Docker",
+          "commands": ["make run-docker-compose"],
+          "shouldRunCommands": false
+        }
+      ]
+    }
+  ],
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.languageServer": "None",
+  "cursorpyright.analysis.typeCheckingMode": "standard"
+}

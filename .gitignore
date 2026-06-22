@@ -33,7 +33,10 @@ chroma/
 # OS / editor
 .DS_Store
 .idea/
-.vscode/
+# Track only settings.json (overrides the global ~/.gitignore_global .vscode rule)
+!.vscode/
+.vscode/*
+!.vscode/settings.json
 
 # Course / experiment outputs
 outputs/
