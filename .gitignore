@@ -41,3 +41,6 @@ chroma/
 # Course / experiment outputs
 outputs/
 .cache/
+
+# Local data
+qdrant_data/
