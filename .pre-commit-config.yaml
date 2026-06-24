@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: clean-notebook-outputs
+        name: Clear notebook outputs
+        entry: jupyter-nbconvert --clear-output --inplace
+        language: python
+        additional_dependencies: ["nbconvert>=7.17.1"]
+        files: \.ipynb$
