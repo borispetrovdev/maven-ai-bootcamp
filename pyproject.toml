@@ -32,4 +32,5 @@ members = [
 dev = [
     "matplotlib>=3.11.0",
     "pre-commit>=4.6.0",
+    "qdrant-client>=1.18.0",
 ]
