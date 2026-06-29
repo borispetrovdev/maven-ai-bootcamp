@@ -8,6 +8,11 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    # TODO: Depends on the full `api` package only to reuse RAGResponse (and future
+    # request/response schemas). Prefer a lightweight shared workspace package
+    # (e.g. packages/shared) with Pydantic models that both `api` and `chatbot-ui`
+    # import, so the UI image does not pull in FastAPI, Qdrant, etc.
+    "api",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
     "streamlit>=1.58.0",
@@ -18,6 +23,7 @@ requires = ["uv_build>=0.11.23,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.sources]
+api = { workspace = true }
 shared = { workspace = true }
 
 [tool.hatch.build.targets.wheel]

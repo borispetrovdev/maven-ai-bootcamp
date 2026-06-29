@@ -6,6 +6,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
 # Copy package files and source
+COPY apps/api ./apps/api
 COPY apps/chatbot_ui ./apps/chatbot_ui
 
 ENV UV_COMPILE_BYTECODE=1
