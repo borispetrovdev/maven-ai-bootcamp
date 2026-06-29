@@ -4,8 +4,6 @@ from langsmith import traceable, get_current_run_tree
 
 embedding_model = "text-embedding-3-small"
 
-qdrant_client = QdrantClient(url="http://qdrant:6333")
-
 
 @traceable(
     name="embed_query",
@@ -24,7 +22,7 @@ def get_embedding(text, model=embedding_model):
 
 
 @traceable(name="retrieve_data", run_type="retriever")
-def retrieve_data(query, k=5):
+def retrieve_data(query, qdrant_client: QdrantClient, k=5):
     query_embedding = get_embedding(query)
     results = qdrant_client.query_points(
         collection_name="Amazon-items-collection-01", query=query_embedding, limit=k
@@ -120,9 +118,9 @@ def generate_answer(prompt):
 @traceable(
     name="rag_pipeline",
 )
-def rag_pipeline(question, topk_k=5):
+def rag_pipeline(question, qdrant_client: QdrantClient, topk_k=5):
 
-    retrieved_context = retrieve_data(question, k=topk_k)
+    retrieved_context = retrieve_data(question, qdrant_client, k=topk_k)
     preprocessed_context = process_context(retrieved_context)
     prompt = build_prompt(preprocessed_context, question)
     answer = generate_answer(prompt)
