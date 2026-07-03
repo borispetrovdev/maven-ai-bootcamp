@@ -244,7 +244,7 @@ def rag_pipeline_with_decoration(
                 "id": item.id,
                 "image_url": str(payload.image),
                 "price": payload.price,
-                "description": payload.preprocessed_description,
+                "description": item.description,
             }
         )
 
