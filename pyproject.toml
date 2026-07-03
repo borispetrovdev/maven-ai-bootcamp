@@ -39,4 +39,5 @@ dev = [
     "pre-commit>=4.6.0",
     "qdrant-client>=1.18.0",
     "ragas>=0.4.3",
+    "ruff>=0.15.20",
 ]
