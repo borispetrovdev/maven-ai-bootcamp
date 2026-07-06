@@ -3,11 +3,12 @@ from typing import TypedDict
 
 import instructor
 import openai
+import pydantic
 from langsmith import get_current_run_tree, traceable
 from openai.types.responses.response import Response
 from pydantic import BaseModel, Field
-from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchValue
+from qdrant_client import QdrantClient, models
+from qdrant_client.models import Document, FieldCondition, Filter, MatchValue, Prefetch
 
 from api.api.models import ItemPayload
 
@@ -54,12 +55,31 @@ RetrievedData = TypedDict(
     },
 )
 
+HYBRID_SEARCH_COLLECTION_NAME = "Amazon-items-collection-01-hybrid-search"
+
 
 @traceable(name="retrieve_data", run_type="retriever")
 def retrieve_data(query, qdrant_client: QdrantClient, k=5) -> RetrievedData:
     query_embedding = get_embedding(query)
     results = qdrant_client.query_points(
-        collection_name="Amazon-items-collection-01", query=query_embedding, limit=k
+        collection_name=HYBRID_SEARCH_COLLECTION_NAME,
+        prefetch=[
+            Prefetch(
+                query=query_embedding,
+                using="text-embedding-3-small",
+                limit=20,
+            ),
+            Prefetch(
+                query=Document(
+                    text=query,
+                    model="qdrant/bm25",
+                ),
+                using="bm25",
+                limit=20,
+            ),
+        ],
+        query=models.RrfQuery(rrf=models.Rrf(weights=[3, 1])),
+        limit=k,
     )
 
     retrieved_context_ids = []
@@ -225,7 +245,7 @@ def rag_pipeline_with_decoration(
     used_context: list[UsedContextEntry] = []
     for item in result.get("references", []):
         points = qdrant_client.scroll(
-            collection_name="Amazon-items-collection-01",
+            collection_name=HYBRID_SEARCH_COLLECTION_NAME,
             with_payload=True,
             with_vectors=False,
             scroll_filter=Filter(
@@ -235,10 +255,16 @@ def rag_pipeline_with_decoration(
             ),
         )[0]
 
+        if len(points) == 0:
+            continue
+
         payload = points[0].payload
         if not payload:
             raise ValueError(f"No payload in point: {points[0].id}")
-        payload = ItemPayload.model_validate(payload)
+        try:
+            payload = ItemPayload.model_validate(payload)
+        except pydantic.ValidationError as e:
+            raise ValueError(f"Invalid payload: {payload}, error: {e}") from e
         used_context.append(
             {
                 "id": item.id,
