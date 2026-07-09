@@ -142,4 +142,5 @@ result = ls_client.evaluate(
     data="rag-evaluation-dataset-extended",
     evaluators=evaluators,
     experiment_prefix="hybrid-rerank",
+    max_concurrency=10,
 )
