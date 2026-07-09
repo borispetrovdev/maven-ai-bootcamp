@@ -115,7 +115,7 @@ def retrieve_data(
     }
 
 
-RERANK_MODEL = "rerank-v4-pro"
+RERANK_MODEL = "rerank-v4.0-pro"
 
 
 @traceable(
