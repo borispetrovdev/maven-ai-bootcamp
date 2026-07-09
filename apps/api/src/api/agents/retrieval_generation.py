@@ -1,6 +1,7 @@
 import logging
 from typing import TypedDict
 
+import cohere
 import instructor
 import openai
 import pydantic
@@ -60,28 +61,38 @@ HYBRID_SEARCH_COLLECTION_NAME = "Amazon-items-collection-01-hybrid-search"
 
 
 @traceable(name="retrieve_data", run_type="retriever")
-def retrieve_data(query, qdrant_client: QdrantClient, k=5) -> RetrievedData:
+def retrieve_data(
+    query, qdrant_client: QdrantClient, k=5, hybrid=True
+) -> RetrievedData:
     query_embedding = get_embedding(query)
-    results = qdrant_client.query_points(
-        collection_name=HYBRID_SEARCH_COLLECTION_NAME,
-        prefetch=[
-            Prefetch(
-                query=query_embedding,
-                using="text-embedding-3-small",
-                limit=20,
-            ),
-            Prefetch(
-                query=Document(
-                    text=query,
-                    model="qdrant/bm25",
+    if hybrid:
+        results = qdrant_client.query_points(
+            collection_name=HYBRID_SEARCH_COLLECTION_NAME,
+            prefetch=[
+                Prefetch(
+                    query=query_embedding,
+                    using="text-embedding-3-small",
+                    limit=20,
                 ),
-                using="bm25",
-                limit=20,
-            ),
-        ],
-        query=models.RrfQuery(rrf=models.Rrf(weights=[3, 1])),
-        limit=k,
-    )
+                Prefetch(
+                    query=Document(
+                        text=query,
+                        model="qdrant/bm25",
+                    ),
+                    using="bm25",
+                    limit=20,
+                ),
+            ],
+            query=models.RrfQuery(rrf=models.Rrf(weights=[3, 1])),
+            limit=k,
+        )
+    else:
+        results = qdrant_client.query_points(
+            collection_name=HYBRID_SEARCH_COLLECTION_NAME,
+            query=query_embedding,
+            using="text-embedding-3-small",
+            limit=k,
+        )
 
     retrieved_context_ids = []
     retrieved_context = []
@@ -101,6 +112,33 @@ def retrieve_data(query, qdrant_client: QdrantClient, k=5) -> RetrievedData:
         "retrieved_context": retrieved_context,
         "similarity_scores": similarity_scores,
         "retrieved_context_ratings": retrieved_context_ratings,
+    }
+
+
+RERANK_MODEL = "rerank-v4-pro"
+
+
+@traceable(
+    name="rerank_data",
+    run_type="chain",
+    metadata={"ls_provider": "cohere", "ls_model_name": RERANK_MODEL},
+)
+def rerank_data(query: str, context: RetrievedData, top_k=5) -> RetrievedData:
+    cohere_client = cohere.ClientV2()
+    response = cohere_client.rerank(
+        model=RERANK_MODEL,
+        query=query,
+        documents=context["retrieved_context"],
+        top_n=top_k,
+    )
+    order = [result.index for result in response.results]
+    return {
+        "retrieved_context_ids": [context["retrieved_context_ids"][i] for i in order],
+        "retrieved_context": [context["retrieved_context"][i] for i in order],
+        "similarity_scores": [context["similarity_scores"][i] for i in order],
+        "retrieved_context_ratings": [
+            context["retrieved_context_ratings"][i] for i in order
+        ],
     }
 
 
@@ -183,10 +221,21 @@ RAGPipelineResponse = TypedDict(
     name="rag_pipeline",
 )
 def rag_pipeline(
-    question: str, qdrant_client: QdrantClient, topk_k=5
+    question: str,
+    qdrant_client: QdrantClient,
+    top_k=5,
+    hybrid=True,
+    rerank=False,
+    retrieve_k=20,
 ) -> RAGPipelineResponse:
 
-    retrieved_context = retrieve_data(question, qdrant_client, k=topk_k)
+    retrieved_context = retrieve_data(
+        question, qdrant_client, k=retrieve_k if rerank else top_k, hybrid=hybrid
+    )
+
+    if rerank:
+        retrieved_context = rerank_data(question, retrieved_context, top_k=top_k)
+
     preprocessed_context = process_context(retrieved_context)
     prompt = build_prompt(preprocessed_context, question)
     answer = generate_answer(prompt)

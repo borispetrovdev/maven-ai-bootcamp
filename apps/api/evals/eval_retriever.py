@@ -1,28 +1,15 @@
-import json
-
-from qdrant_client.models import Filter, FieldCondition, MatchValue
-
+from api.agents.retrieval_generation import rag_pipeline
 from langsmith import Client
-
+from openai import AsyncOpenAI
+from qdrant_client import QdrantClient
 from ragas import SingleTurnSample
-from ragas.metrics.collections import Faithfulness, AnswerRelevancy
+from ragas.embeddings import OpenAIEmbeddings as RagasOpenAIEmbeddings
+from ragas.llms import llm_factory
 from ragas.metrics import (
     IDBasedContextPrecision,
     IDBasedContextRecall,
 )
-import os
-import openai
-from qdrant_client import QdrantClient
-from langsmith import Client
-
-from langchain_openai import ChatOpenAI
-from ragas.embeddings import OpenAIEmbeddings as RagasOpenAIEmbeddings
-from ragas.embeddings.base import embedding_factory
-
-from ragas.llms import llm_factory
-from openai import AsyncOpenAI
-
-from api.agents.retrieval_generation import rag_pipeline
+from ragas.metrics.collections import AnswerRelevancy, Faithfulness
 
 ls_client = Client()
 qdrant_client = QdrantClient(url="http://localhost:6333")
