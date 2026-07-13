@@ -12,16 +12,9 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.models import Document, FieldCondition, Filter, MatchValue, Prefetch
 
 from api.agents.utils.prompt_management import prompt_template_config
-from api.api.models import ItemPayload
+from api.api.models import ItemPayload, RAGUsedContextSimple
 
 embedding_model = "text-embedding-3-small"
-
-
-class RAGUsedContextSimple(BaseModel):
-    id: str = Field(description="ID of the item used to answer the question")
-    description: str = Field(
-        description="Description of the item corresponding to the id"
-    )
 
 
 class RAGGenerationResponse(BaseModel):

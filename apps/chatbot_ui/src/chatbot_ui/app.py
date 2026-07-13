@@ -93,9 +93,12 @@ if prompt := st.chat_input("Hello! How can I assist you today?"):
     with st.chat_message("assistant"):
         status, output = api_call(
             "POST",
-            f"{config.API_URL}/rag",
+            f"{config.API_URL}/agent/",
             json={"query": prompt},
         )
+        if not status:
+            st.error(output.get("detail") or output.get("message") or "Request failed")
+            st.stop()
         response_data = RAGResponse.model_validate(output)
         answer = response_data.answer
 
