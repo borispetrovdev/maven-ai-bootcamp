@@ -1,5 +1,7 @@
-from typing import Optional
+from operator import add
+from typing import Annotated, List, Optional, TypedDict
 
+from langchain_core.messages import AnyMessage
 from pydantic import BaseModel, Field, HttpUrl
 
 
@@ -14,6 +16,13 @@ class ItemPayload(BaseModel):
 
 class RAGRequest(BaseModel):
     query: str
+
+
+class RAGUsedContextSimple(BaseModel):
+    id: str = Field(description="ID of the item used to answer the question")
+    description: str = Field(
+        description="Description of the item corresponding to the id"
+    )
 
 
 class RAGUsedContext(BaseModel):
@@ -32,3 +41,21 @@ class RAGResponse(BaseModel):
     used_context: list[RAGUsedContext] = Field(
         description="List of items used to answer the question"
     )
+
+
+class StateUpdate(TypedDict, total=False):
+    messages: Annotated[List[AnyMessage], add]
+    question_relevant: bool
+    iteration: int
+    answer: str
+    final_answer: bool
+    references: list[RAGUsedContextSimple]
+
+
+class State(BaseModel):
+    messages: Annotated[List[AnyMessage], add] = []
+    question_relevant: bool = False
+    iteration: int = 0
+    answer: str = ""
+    final_answer: bool = False
+    references: list[RAGUsedContextSimple] = []

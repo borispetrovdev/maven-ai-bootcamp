@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, Request
 
-from api.agents.retrieval_generation import rag_pipeline_with_decoration
+from api.agents.graph import agent_wrapper
 from api.api.models import RAGRequest, RAGResponse, RAGUsedContext
 
 logging.basicConfig(
@@ -16,7 +16,7 @@ rag_router = APIRouter()
 
 @rag_router.post("/")
 def chat(_request: Request, payload: RAGRequest) -> RAGResponse:
-    result = rag_pipeline_with_decoration(payload.query)
+    result = agent_wrapper(payload.query)
 
     return RAGResponse(
         answer=result["answer"],
@@ -25,4 +25,4 @@ def chat(_request: Request, payload: RAGRequest) -> RAGResponse:
 
 
 api_router = APIRouter()
-api_router.include_router(rag_router, prefix="/rag", tags=["rag"])
+api_router.include_router(rag_router, prefix="/agent", tags=["agent"])

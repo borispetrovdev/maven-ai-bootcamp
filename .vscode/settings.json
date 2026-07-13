@@ -2,6 +2,15 @@
   "restoreTerminals.terminals": [
     {
       "splitTerminals": [
+        {
+          "name": "Claude",
+          "commands": ["claude"],
+          "shouldRunCommands": false
+        }
+      ]
+    },
+    {
+      "splitTerminals": [
         { "name": "zsh", "commands": [] },
         {
           "name": "Docker",
