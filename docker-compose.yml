@@ -10,6 +10,10 @@ services:
     restart: unless-stopped
     volumes:
       - ./apps/chatbot_ui/src:/app/apps/chatbot_ui/src
+      # chatbot_ui imports the `api` package (installed editable at
+      # /app/apps/api/src), so mount the live api src here too — otherwise this
+      # container keeps the build-time snapshot and misses api/model changes.
+      - ./apps/api/src:/app/apps/api/src
 
   api:
     build:
@@ -31,3 +35,16 @@ services:
     volumes:
       - ./qdrant_data:/qdrant/storage:z
     restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - 5433:5432
+    environment:
+      POSTGRES_DB: langgraph_db
+      POSTGRES_USER: langgraph_user
+      POSTGRES_PASSWORD: langgraph_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    restart: unless-stopped
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data

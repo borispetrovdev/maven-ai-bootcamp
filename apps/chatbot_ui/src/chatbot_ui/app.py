@@ -1,8 +1,9 @@
+import uuid
 from typing import Literal
 
 import requests
 import streamlit as st
-from api.api.models import RAGResponse, RAGUsedContext
+from api.api.models import AgentRequest, AgentResponse, RAGUsedContext
 from pydantic import BaseModel
 
 from chatbot_ui.core.config import config
@@ -18,6 +19,7 @@ class AppState(BaseModel, validate_assignment=True):
         ChatMessage(role="assistant", content="Hello! How can I assist you today?")
     ]
     used_context: list[RAGUsedContext] = []
+    thread_id: str = str(uuid.uuid4())
 
 
 def get_state() -> AppState:
@@ -94,12 +96,12 @@ if prompt := st.chat_input("Hello! How can I assist you today?"):
         status, output = api_call(
             "POST",
             f"{config.API_URL}/agent/",
-            json={"query": prompt},
+            json=AgentRequest(query=prompt, thread_id=state.thread_id).model_dump(),
         )
         if not status:
             st.error(output.get("detail") or output.get("message") or "Request failed")
             st.stop()
-        response_data = RAGResponse.model_validate(output)
+        response_data = AgentResponse.model_validate(output)
         answer = response_data.answer
 
         state.used_context = response_data.used_context

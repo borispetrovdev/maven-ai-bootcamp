@@ -14,8 +14,9 @@ class ItemPayload(BaseModel):
     parent_asin: str = Field(description="Amazon parent ASIN identifier")
 
 
-class RAGRequest(BaseModel):
+class AgentRequest(BaseModel):
     query: str
+    thread_id: str
 
 
 class RAGUsedContextSimple(BaseModel):
@@ -36,7 +37,7 @@ class RAGUsedContext(BaseModel):
     )
 
 
-class RAGResponse(BaseModel):
+class AgentResponse(BaseModel):
     answer: str
     used_context: list[RAGUsedContext] = Field(
         description="List of items used to answer the question"

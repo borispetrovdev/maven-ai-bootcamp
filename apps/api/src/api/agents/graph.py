@@ -1,6 +1,7 @@
 from enum import StrEnum
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 from pydantic import ValidationError
@@ -83,15 +84,17 @@ graph = workflow.compile()
 ### Agent Execution
 
 
-def run_agent(question: str) -> State:
+def agent_wrapper(question: str, thread_id: str) -> RAGPipelineWithDecorationResponse:
     initial_state = State(messages=[HumanMessage(content=question)])
-    result = graph.invoke(initial_state)
-    return State.model_validate(result)
-
-
-def agent_wrapper(question: str) -> RAGPipelineWithDecorationResponse:
     qdrant_client = QdrantClient(url="http://qdrant:6333")
-    result = run_agent(question)
+
+    with PostgresSaver.from_conn_string(
+        "postgresql://langgraph_user:langgraph_password@postgres:5432/langgraph_db"
+    ) as checkpointer:
+        graph = workflow.compile(checkpointer=checkpointer)
+        result = State.model_validate(
+            graph.invoke(initial_state, {"configurable": {"thread_id": thread_id}})
+        )
 
     used_context: list[UsedContextEntry] = []
     for item in result.references:
