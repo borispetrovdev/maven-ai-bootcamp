@@ -2,6 +2,7 @@ import logging
 
 import instructor
 from langchain_core.messages import (
+    AIMessage,
     SystemMessage,
     convert_to_openai_messages,
 )
@@ -28,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 
 class FinalResponse(BaseModel):
+    """Call this tool when the final answer is possible using available context."""
+
     answer: str = Field(description="Answer to the question")
     references: list[RAGUsedContextSimple] = Field(
         description="List of items used to answer the question"
@@ -56,10 +59,10 @@ def agent_node(state: State) -> StateUpdate:
     prompt = template.render()
 
     llm = ChatOpenAI(
-        model="gpt-5.4-mini", reasoning_effort="none", use_responses_api=True
+        model="gpt-5.4-mini", reasoning_effort="low", use_responses_api=True
     )
     llm_with_tools = llm.bind_tools(
-        [get_formatted_item_context, FinalResponse], tool_choice="any"
+        [get_formatted_item_context, FinalResponse], tool_choice="required"
     )
 
     final_answer = False
@@ -84,6 +87,13 @@ def agent_node(state: State) -> StateUpdate:
                 )
                 references.extend(final_response_validated.references)
                 answer = final_response_validated.answer
+                # FinalResponse is a structured-output "tool" that never receives a
+                # ToolMessage, so returning `response` as-is would persist an
+                # unanswered function call. On the next turn the checkpointer
+                # replays it and the Responses API rejects the request with
+                # "No tool output found for function call ...". Store a plain text
+                # AIMessage instead so the conversation history stays valid.
+                response = AIMessage(content=answer)
                 break
 
     return {
@@ -114,9 +124,7 @@ def intent_router_node(state: State) -> IntentRouterResponse:
     messages = state.messages
 
     conversation = []
-
-    for message in messages:
-        conversation.append(convert_to_openai_messages(message))
+    conversation.append(convert_to_openai_messages(messages[-1]))
 
     client = instructor.from_openai(
         wrap_openai(OpenAI()),
@@ -125,7 +133,10 @@ def intent_router_node(state: State) -> IntentRouterResponse:
 
     response, raw_response = client.create_with_completion(
         model=MODEL_NAME_AGENT,
-        messages=[{"role": "system", "content": prompt}, *conversation],  # type: ignore[arg-type]
+        messages=[
+            {"role": "system", "content": prompt},
+            *conversation,
+        ],
         reasoning={"effort": "none"},
         response_model=IntentRouterResponse,
     )
