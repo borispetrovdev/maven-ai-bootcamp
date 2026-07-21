@@ -14,7 +14,7 @@ from api.agents.retrieval_generation import (
     RAGPipelineWithDecorationResponse,
     UsedContextEntry,
 )
-from api.agents.tools import get_formatted_item_context
+from api.agents.tools import get_formatted_item_context, get_formatted_reviews_context
 from api.api.models import ItemPayload, State, StateUpdate
 
 
@@ -51,7 +51,7 @@ def intent_router_conditional_edges(state: State) -> Nodes:
 
 
 workflow = StateGraph(State)
-tools = [get_formatted_item_context]
+tools = [get_formatted_item_context, get_formatted_reviews_context]
 tool_node = ToolNode(tools)
 
 workflow.add_node(Nodes.TOOLS, tool_node)

@@ -13,7 +13,7 @@ from openai import OpenAI
 from openai.types.responses.response import Response
 from pydantic import BaseModel, Field
 
-from api.agents.tools import get_formatted_item_context
+from api.agents.tools import get_formatted_item_context, get_formatted_reviews_context
 from api.agents.utils.prompt_management import prompt_template_config
 from api.api.models import RAGUsedContextSimple, State, StateUpdate
 
@@ -62,7 +62,8 @@ def agent_node(state: State) -> StateUpdate:
         model="gpt-5.4-mini", reasoning_effort="low", use_responses_api=True
     )
     llm_with_tools = llm.bind_tools(
-        [get_formatted_item_context, FinalResponse], tool_choice="required"
+        [get_formatted_item_context, get_formatted_reviews_context, FinalResponse],
+        tool_choice="required",
     )
 
     final_answer = False
