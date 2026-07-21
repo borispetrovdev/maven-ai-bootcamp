@@ -9,7 +9,16 @@ from langsmith import get_current_run_tree, traceable
 from openai.types.responses.response import Response
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient, models
-from qdrant_client.models import Document, FieldCondition, Filter, MatchValue, Prefetch
+from qdrant_client.models import (
+    Document,
+    FieldCondition,
+    Filter,
+    Fusion,
+    FusionQuery,
+    MatchAny,
+    MatchValue,
+    Prefetch,
+)
 
 from api.agents.utils.prompt_management import prompt_template_config
 from api.api.models import ItemPayload, RAGUsedContextSimple
@@ -309,3 +318,76 @@ def rag_pipeline_with_decoration(
         "answer": result["answer"],
         "used_context": used_context,
     }
+
+
+RetrievedReviewsData = TypedDict(
+    "RetrievedReviewsData",
+    {
+        "retrieved_asins": list[str],
+        "retrieved_reviews": list[str],
+        "similarity_scores": list[float],
+    },
+)
+
+
+class ReviewEmbeddingPayload(BaseModel):
+    """Fields embedded and stored as the Qdrant point payload."""
+
+    preprocessed_data: str
+    parent_asin: str
+
+
+@traceable(name="retrieve_prefiltered_reviews_data", run_type="retriever")
+def retrieve_prefiltered_reviews_data(
+    query: str, parent_asins: list[str], qdrant_client: QdrantClient, k=5
+) -> RetrievedReviewsData:
+    query_embedding = get_embedding(query)
+    results = qdrant_client.query_points(
+        collection_name="Amazon-reviews-collection-01",
+        prefetch=[
+            Prefetch(
+                query=query_embedding,
+                using="text-embedding-3-small",
+                filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="parent_asin", match=MatchAny(any=parent_asins)
+                        )
+                    ]
+                ),
+                limit=20,
+            ),
+        ],
+        query=FusionQuery(fusion=Fusion.RRF),
+        limit=k,
+    )
+
+    retrieved_asins = []
+    retrieved_reviews = []
+    similarity_scores = []
+
+    for result in results.points:
+        if not result.payload:
+            raise ValueError("No payload found in Qdrant ScoredPoint")
+        payload = ReviewEmbeddingPayload.model_validate(result.payload)
+        retrieved_asins.append(payload.parent_asin)
+        retrieved_reviews.append(payload.preprocessed_data)
+        similarity_scores.append(result.score)
+
+    return {
+        "retrieved_asins": retrieved_asins,
+        "retrieved_reviews": retrieved_reviews,
+        "similarity_scores": similarity_scores,
+    }
+
+
+@traceable(name="format_retrieved_reviews", run_type="prompt")
+def process_retrieved_reviews(retrieved_data: RetrievedReviewsData) -> str:
+    formatted_context = ""
+
+    for asin, review in zip(
+        retrieved_data["retrieved_asins"], retrieved_data["retrieved_reviews"]
+    ):
+        formatted_context += f"- ID: {asin}, user review: {review}\n"
+
+    return formatted_context
