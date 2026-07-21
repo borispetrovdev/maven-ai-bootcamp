@@ -84,7 +84,11 @@ graph = workflow.compile()
 ### Agent Execution
 
 
-def agent_wrapper(question: str, thread_id: str) -> RAGPipelineWithDecorationResponse:
+class AgentWrapperResponse(RAGPipelineWithDecorationResponse):
+    trace_id: str
+
+
+def agent_wrapper(question: str, thread_id: str) -> AgentWrapperResponse:
     initial_state = State(messages=[HumanMessage(content=question)])
     qdrant_client = QdrantClient(url="http://qdrant:6333")
 
@@ -131,4 +135,5 @@ def agent_wrapper(question: str, thread_id: str) -> RAGPipelineWithDecorationRes
     return {
         "answer": result.answer,
         "used_context": used_context,
+        "trace_id": result.trace_id,
     }

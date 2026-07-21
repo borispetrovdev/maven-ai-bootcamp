@@ -37,7 +37,7 @@ class FinalResponse(BaseModel):
     )
 
 
-class IntentRouterResponse(BaseModel):
+class IntentRouterCompletionStructure(BaseModel):
     question_relevant: bool
     answer: str = Field(
         description="A clarifying question, if the user's initial query is not relevant."
@@ -106,6 +106,13 @@ def agent_node(state: State) -> StateUpdate:
     }
 
 
+class IntentRouterResponse(IntentRouterCompletionStructure):
+    trace_id: str
+
+
+assert set(IntentRouterResponse.model_fields) <= set(State.model_fields)
+
+
 @traceable(
     name="route_intent",
     run_type="llm",
@@ -139,7 +146,7 @@ def intent_router_node(state: State) -> IntentRouterResponse:
             *conversation,
         ],
         reasoning={"effort": "none"},
-        response_model=IntentRouterResponse,
+        response_model=IntentRouterCompletionStructure,
     )
 
     if not isinstance(raw_response, Response) or raw_response.usage is None:
@@ -155,5 +162,10 @@ def intent_router_node(state: State) -> IntentRouterResponse:
         "output_tokens": raw_response.usage.output_tokens,
         "total_tokens": raw_response.usage.total_tokens,
     }
+    trace_id = current_run.trace_id
 
-    return response
+    return IntentRouterResponse(
+        question_relevant=response.question_relevant,
+        answer=response.answer,
+        trace_id=str(trace_id),
+    )
