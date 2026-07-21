@@ -1,5 +1,5 @@
 from operator import add
-from typing import Annotated, List, Optional, TypedDict
+from typing import Annotated, List, Literal, Optional, TypedDict, Union
 
 from langchain_core.messages import AnyMessage
 from pydantic import BaseModel, Field, HttpUrl
@@ -42,6 +42,7 @@ class AgentResponse(BaseModel):
     used_context: list[RAGUsedContext] = Field(
         description="List of items used to answer the question"
     )
+    trace_id: str = Field(description="Trace ID of the run")
 
 
 class StateUpdate(TypedDict, total=False):
@@ -60,3 +61,17 @@ class State(BaseModel):
     answer: str = ""
     final_answer: bool = False
     references: list[RAGUsedContextSimple] = []
+    trace_id: str = ""
+
+
+class FeedbackRequest(BaseModel):
+    trace_id: str
+    feedback_score: Union[int, None] = Field(description="Feedback score, 0 or 1")
+    feedback_text: str = Field(description="Feedback text")
+    feedback_source_type: Literal["api", "user"] = Field(
+        description="Feedback source type, api or user"
+    )
+
+
+class FeedbackResponse(BaseModel):
+    message: str = Field(description="Message of the feedback submission")
