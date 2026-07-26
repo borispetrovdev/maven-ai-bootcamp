@@ -1,10 +1,11 @@
 from enum import StrEnum
+from typing import Any, Generator, Literal
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
@@ -84,24 +85,74 @@ graph = workflow.compile()
 ### Agent Execution
 
 
-class AgentWrapperResponse(RAGPipelineWithDecorationResponse):
+class AgentStreamData(RAGPipelineWithDecorationResponse):
     trace_id: str
 
 
-def agent_wrapper(question: str, thread_id: str) -> AgentWrapperResponse:
+class AgentStreamResponse(BaseModel):
+    data: AgentStreamData
+    type: Literal["final_answer"]
+
+
+def agent_stream_wrapper(question: str, thread_id: str) -> Generator[str, Any, Any]:
+
+    def _string_for_sse(string: str) -> str:
+        return f"data: {string}\n\n"
+
+    def _process_graph_event(chunk):
+        # print(chunk)
+
+        def _is_node_start(chunk):
+            return chunk[1].get("type") == "task"
+
+        def _tool_to_text(tool_call):
+            if tool_call.get("name") == get_formatted_item_context.name:
+                return f"Looking for items: {tool_call.get('args').get('query', '')}."
+            elif tool_call.get("name") == get_formatted_reviews_context.name:
+                return "Fetching user reviews..."
+
+        if _is_node_start(chunk):
+            name = chunk[1].get("payload", {}).get("name")
+            if name == Nodes.INTENT_ROUTER:
+                return "Analysing the question..."
+            if name == Nodes.AGENT:
+                return "Planning..."
+            if name == Nodes.TOOLS:
+                message = " ".join(
+                    text
+                    for tool_call in chunk[1]
+                    .get("payload", {})
+                    .get("input", {})
+                    .messages[-1]
+                    .tool_calls
+                    if (text := _tool_to_text(tool_call)) is not None
+                )
+                return message
+
     initial_state = State(messages=[HumanMessage(content=question)])
     qdrant_client = QdrantClient(url="http://qdrant:6333")
+
+    result: State | None = None
 
     with PostgresSaver.from_conn_string(
         "postgresql://langgraph_user:langgraph_password@postgres:5432/langgraph_db"
     ) as checkpointer:
         graph = workflow.compile(checkpointer=checkpointer)
-        result = State.model_validate(
-            graph.invoke(initial_state, {"configurable": {"thread_id": thread_id}})
-        )
+
+        for chunk in graph.stream(
+            initial_state,
+            {"configurable": {"thread_id": thread_id}},
+            stream_mode=["values", "debug"],
+        ):
+            processed_chunk = _process_graph_event(chunk)
+            if processed_chunk:
+                yield _string_for_sse(processed_chunk)
+
+            if chunk[0] == "values":
+                result = State.model_validate(chunk[1])
 
     used_context: list[UsedContextEntry] = []
-    for item in result.references:
+    for item in result.references if result else []:
         points = qdrant_client.scroll(
             collection_name=HYBRID_SEARCH_COLLECTION_NAME,
             with_payload=True,
@@ -132,8 +183,14 @@ def agent_wrapper(question: str, thread_id: str) -> AgentWrapperResponse:
             }
         )
 
-    return {
-        "answer": result.answer,
-        "used_context": used_context,
-        "trace_id": result.trace_id,
-    }
+    if result:
+        to_serialize: AgentStreamData = AgentStreamData(
+            answer=result.answer,
+            used_context=used_context,
+            trace_id=result.trace_id,
+        )
+        yield _string_for_sse(
+            (
+                AgentStreamResponse(data=to_serialize, type="final_answer")
+            ).model_dump_json()
+        )

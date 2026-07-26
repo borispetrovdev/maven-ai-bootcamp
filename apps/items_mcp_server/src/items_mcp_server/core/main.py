@@ -1,16 +1,16 @@
-from langchain_core.tools import tool
+from fastmcp import FastMCP
 from qdrant_client import QdrantClient
 
-from api.agents.retrieval_generation import (
+from items_mcp_server.core.utils import (
     process_context,
-    process_retrieved_reviews,
     rerank_data,
     retrieve_items_data,
-    retrieve_prefiltered_reviews_data,
 )
 
+mcp = FastMCP("items_mcp_server")
 
-@tool
+
+@mcp.tool
 def get_formatted_item_context(query: str, top_k: int = 5) -> str:
     """Search available products and return the top k matching inventory items.
 
@@ -36,8 +36,8 @@ def get_formatted_item_context(query: str, top_k: int = 5) -> str:
         A string of the top k available products, each prefixed with its ID and
         average rating.
     """
-
     qdrant_client = QdrantClient(url="http://qdrant:6333")
+
     retrieved_context = retrieve_items_data(query, qdrant_client, k=20, hybrid=True)
 
     retrieved_context = rerank_data(query, retrieved_context, top_k=top_k)
@@ -45,26 +45,5 @@ def get_formatted_item_context(query: str, top_k: int = 5) -> str:
     return formatted_context
 
 
-@tool
-def get_formatted_reviews_context(
-    query: str, parent_asins: list[str], top_k: int = 5
-) -> str:
-    """Get the top k reviews matching a query for a list of prefiltered items.
-
-    Args:
-        query: The query to get the top k reviews for
-        item_list: The list of item IDs to prefilter for before running the query
-        top_k: The number of reviews to retrieve, this should be at least 20 if multipple items are prefiltered
-
-    Returns:
-        A string of the top k context chunks with IDs prepending each chunk, each representing a review for a given inventory item for a given query.
-    """
-
-    qdrant_client = QdrantClient(url="http://qdrant:6333")
-
-    retrieved_context = retrieve_prefiltered_reviews_data(
-        query, parent_asins, qdrant_client, k=top_k
-    )
-
-    formatted_context = process_retrieved_reviews(retrieved_context)
-    return formatted_context
+if __name__ == "__main__":
+    mcp.run(transport="http", host="0.0.0.0", port=8000)

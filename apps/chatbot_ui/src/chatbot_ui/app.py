@@ -1,8 +1,10 @@
+import json
 import uuid
 from typing import Literal, TypedDict, assert_never
 
 import requests
 import streamlit as st
+from api.agents.graph import AgentStreamResponse
 from api.api.models import (
     AgentRequest,
     AgentResponse,
@@ -10,7 +12,7 @@ from api.api.models import (
     FeedbackResponse,
     RAGUsedContext,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from chatbot_ui.core.config import config
 
@@ -64,6 +66,28 @@ def api_call(method: str, url: str, **kwargs):
             return True, response_data
 
         return False, response_data
+
+    except requests.exceptions.ConnectionError:
+        _show_error_popup(
+            "Connection error. Please check your internet connection and try again."
+        )
+        return False, {"message": "Connection error"}
+    except requests.exceptions.Timeout:
+        _show_error_popup("The request timed out. Please try again.")
+        return False, {"message": "Request timeout"}
+    except Exception as e:
+        _show_error_popup(f"An error occurred: {str(e)}")
+        return False, {"message": str(e)}
+
+
+def api_call_stream(method: str, url: str, **kwargs):
+    def _show_error_popup(message: str) -> None:
+        st.session_state["error_popup"] = {"message": message, "visible": True}
+
+    try:
+        response: requests.Response = getattr(requests, method.lower())(url, **kwargs)
+
+        return response.iter_lines()
 
     except requests.exceptions.ConnectionError:
         _show_error_popup(
@@ -238,20 +262,42 @@ if prompt := st.chat_input("Hello! How can I assist you today?"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        status, output = api_call(
+        status_placeholder = st.empty()
+        message_placeholder = st.empty()
+        for line in api_call_stream(
             "POST",
             f"{config.API_URL}/agent/",
             json=AgentRequest(query=prompt, thread_id=state.thread_id).model_dump(),
-        )
-        if not status:
-            st.error(output.get("detail") or output.get("message") or "Request failed")
-            st.stop()
-        response_data = AgentResponse.model_validate(output)
-        answer = response_data.answer
+            stream=True,
+            headers={"Accept": "text/event-stream"},
+        ):
+            line_text: str = line.decode("utf-8")
+            if line_text.startswith("data: "):
+                data = line_text[6:]
 
-        state.used_context = response_data.used_context
-        state.trace_id = response_data.trace_id
+                try:
+                    json_data = json.loads(data)
+                    try:
+                        response = AgentStreamResponse.model_validate(json_data)
+                        data = AgentResponse.model_validate(response.data)
+                        state.used_context = data.used_context
+                        state.messages.append(
+                            ChatMessage(role="assistant", content=data.answer)
+                        )
+                        state.trace_id = data.trace_id
 
-        st.write(answer)
-    state.messages.append(ChatMessage(role="assistant", content=answer))
+                        state.latest_feedback = None
+                        state.show_feedback_box = False
+                        state.feedback_submission_status = None
+
+                        status_placeholder.empty()
+                        message_placeholder.markdown(data.answer)
+                    except ValidationError as e:
+                        st.error(
+                            f"Response was not a valid AgentStreamResponse or data was not a valid AgentResponse: {e}. Response: {json_data}"
+                        )
+
+                except json.JSONDecodeError:
+                    status_placeholder.markdown(f"*{data}*")
+
     st.rerun()
