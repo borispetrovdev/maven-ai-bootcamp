@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "api",
     "chatbot-ui",
+    "items-mcp-server",
     "google-genai>=2.9.0",
     "groq>=1.4.0",
     "ipykernel>=7.3.0",
@@ -21,19 +22,24 @@ dependencies = [
 [tool.uv.sources]
 api = { workspace = true }
 chatbot-ui = { workspace = true }
+items-mcp-server = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "apps/api",
     "apps/chatbot_ui",
+    "apps/items_mcp_server",
+    "apps/reviews_mcp_server",
 ]
 
 [dependency-groups]
 dev = [
     "cohere>=7.0.5",
+    "fastmcp>=3.4.4",
     "instructor>=1.15.4",
     "langchain-community>=0.4.0,<0.4.2",
     "langchain-google-vertexai>=3.2.4",
+    "langchain-mcp-adapters>=0.3.0",
     "langchain-openai>=1.3.3",
     "langgraph>=1.2.2",
     "langgraph-checkpoint-postgres>=3.1.0",

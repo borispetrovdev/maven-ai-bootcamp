@@ -62,8 +62,8 @@ RetrievedData = TypedDict(
 HYBRID_SEARCH_COLLECTION_NAME = "Amazon-items-collection-01-hybrid-search"
 
 
-@traceable(name="retrieve_data", run_type="retriever")
-def retrieve_data(
+@traceable(name="retrieve_items_data", run_type="retriever")
+def retrieve_items_data(
     query, qdrant_client: QdrantClient, k=5, hybrid=True
 ) -> RetrievedData:
     query_embedding = get_embedding(query)
@@ -231,7 +231,7 @@ def rag_pipeline(
     retrieve_k=20,
 ) -> RAGPipelineResponse:
 
-    retrieved_context = retrieve_data(
+    retrieved_context = retrieve_items_data(
         question, qdrant_client, k=retrieve_k if rerank else top_k, hybrid=hybrid
     )
 
