@@ -1,5 +1,6 @@
 import json
 import uuid
+from collections.abc import Iterator
 from typing import Literal, TypedDict, assert_never
 
 import requests
@@ -80,7 +81,9 @@ def api_call(method: str, url: str, **kwargs):
         return False, {"message": str(e)}
 
 
-def api_call_stream(method: str, url: str, **kwargs):
+def api_call_stream(method: str, url: str, **kwargs) -> Iterator[bytes]:
+    """Yield the response's lines, or nothing at all once an error popup is shown."""
+
     def _show_error_popup(message: str) -> None:
         st.session_state["error_popup"] = {"message": message, "visible": True}
 
@@ -93,13 +96,13 @@ def api_call_stream(method: str, url: str, **kwargs):
         _show_error_popup(
             "Connection error. Please check your internet connection and try again."
         )
-        return False, {"message": "Connection error"}
+        return iter(())
     except requests.exceptions.Timeout:
         _show_error_popup("The request timed out. Please try again.")
-        return False, {"message": "Request timeout"}
+        return iter(())
     except Exception as e:
         _show_error_popup(f"An error occurred: {str(e)}")
-        return False, {"message": str(e)}
+        return iter(())
 
 
 state = get_state()

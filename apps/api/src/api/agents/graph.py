@@ -1,11 +1,12 @@
 from enum import StrEnum
-from typing import Any, Generator, Literal
+from typing import Any, Generator, Literal, assert_never, get_args
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolCall
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
-from pydantic import BaseModel, ValidationError
+from langgraph.types import DebugPayload
+from pydantic import BaseModel, TypeAdapter, ValidationError
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
@@ -94,40 +95,57 @@ class AgentStreamResponse(BaseModel):
     type: Literal["final_answer"]
 
 
+GraphStreamMode = Literal["values", "debug"]
+"""The stream modes `agent_stream_wrapper` asks for and knows how to handle."""
+
+STREAM_MODES: tuple[GraphStreamMode, ...] = get_args(GraphStreamMode)
+"""Runtime counterpart of `GraphStreamMode`, derived so the two cannot drift apart."""
+
+GraphStreamChunk = tuple[GraphStreamMode, Any]
+"""A `(mode, payload)` pair, as yielded by `graph.stream` for a sequence `stream_mode`.
+
+`Pregel.stream` annotates its return as `Iterator[dict[str, Any] | Any]`, which describes
+neither the tuple nor the per-mode payloads, so the envelope is validated at runtime.
+"""
+
+_graph_stream_chunk_adapter = TypeAdapter(GraphStreamChunk)
+
+
 def agent_stream_wrapper(question: str, thread_id: str) -> Generator[str, Any, Any]:
 
     def _string_for_sse(string: str) -> str:
         return f"data: {string}\n\n"
 
-    def _process_graph_event(chunk):
-        # print(chunk)
+    def _status_for_debug_event(payload: DebugPayload[dict[str, Any]]) -> str | None:
+        """Render a user-facing status line for a node that is about to run."""
 
-        def _is_node_start(chunk):
-            return chunk[1].get("type") == "task"
-
-        def _tool_to_text(tool_call):
-            if tool_call.get("name") == get_formatted_item_context.name:
-                return f"Looking for items: {tool_call.get('args').get('query', '')}."
-            elif tool_call.get("name") == get_formatted_reviews_context.name:
+        def _tool_to_text(tool_call: ToolCall) -> str | None:
+            if tool_call["name"] == get_formatted_item_context.name:
+                return f"Looking for items: {tool_call['args'].get('query', '')}."
+            elif tool_call["name"] == get_formatted_reviews_context.name:
                 return "Fetching user reviews..."
+            return None
 
-        if _is_node_start(chunk):
-            name = chunk[1].get("payload", {}).get("name")
-            if name == Nodes.INTENT_ROUTER:
-                return "Analysing the question..."
-            if name == Nodes.AGENT:
-                return "Planning..."
-            if name == Nodes.TOOLS:
-                message = " ".join(
-                    text
-                    for tool_call in chunk[1]
-                    .get("payload", {})
-                    .get("input", {})
-                    .messages[-1]
-                    .tool_calls
-                    if (text := _tool_to_text(tool_call)) is not None
-                )
-                return message
+        if payload["type"] != "task":
+            return None
+
+        name = payload["payload"]["name"]
+        if name == Nodes.INTENT_ROUTER:
+            return "Analysing the question..."
+        if name == Nodes.AGENT:
+            return "Planning..."
+        if name == Nodes.TOOLS:
+            # TaskPayload.input is typed `Any` upstream, so validate before using it.
+            task_input = State.model_validate(payload["payload"]["input"])
+            last_message = task_input.messages[-1]
+            if not isinstance(last_message, AIMessage):
+                return None
+            return " ".join(
+                text
+                for tool_call in last_message.tool_calls
+                if (text := _tool_to_text(tool_call)) is not None
+            )
+        return None
 
     initial_state = State(messages=[HumanMessage(content=question)])
     qdrant_client = QdrantClient(url="http://qdrant:6333")
@@ -139,17 +157,23 @@ def agent_stream_wrapper(question: str, thread_id: str) -> Generator[str, Any, A
     ) as checkpointer:
         graph = workflow.compile(checkpointer=checkpointer)
 
-        for chunk in graph.stream(
+        for raw_chunk in graph.stream(
             initial_state,
             {"configurable": {"thread_id": thread_id}},
-            stream_mode=["values", "debug"],
+            # Must be a `list`: langgraph only yields `(mode, payload)` chunks behind an
+            # `isinstance(stream_mode, list)` check, so a tuple yields bare payloads instead.
+            stream_mode=list(STREAM_MODES),
         ):
-            processed_chunk = _process_graph_event(chunk)
-            if processed_chunk:
-                yield _string_for_sse(processed_chunk)
+            mode, payload = _graph_stream_chunk_adapter.validate_python(raw_chunk)
 
-            if chunk[0] == "values":
-                result = State.model_validate(chunk[1])
+            if mode == "debug":
+                status = _status_for_debug_event(payload)
+                if status:
+                    yield _string_for_sse(status)
+            elif mode == "values":
+                result = State.model_validate(payload)
+            else:
+                assert_never(mode)
 
     used_context: list[UsedContextEntry] = []
     for item in result.references if result else []:
