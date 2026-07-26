@@ -46,3 +46,13 @@ outputs/
 qdrant_data/
 data/
 postgres_data/
+
+# Personal teaching workspace, created by the /teach skill at the repo root.
+# Local study material, not part of the project — see the skill for the layout.
+/MISSION.md
+/RESOURCES.md
+/NOTES.md
+/lessons/
+/reference/
+/learning-records/
+/assets/
