@@ -2,6 +2,14 @@ from typing import Literal, TypedDict
 
 import numpy as np
 import psycopg2
+from api.agents.retrieval_generation import (
+    process_context,
+    process_retrieved_reviews,
+    rerank_data,
+    retrieve_items_data,
+    retrieve_prefiltered_reviews_data,
+)
+from api.api.models import ItemPayload
 from langchain_core.tools import tool
 from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel, Field, TypeAdapter
@@ -14,15 +22,6 @@ from qdrant_client.models import (
     MatchValue,
     Prefetch,
 )
-
-from api.agents.retrieval_generation import (
-    process_context,
-    process_retrieved_reviews,
-    rerank_data,
-    retrieve_items_data,
-    retrieve_prefiltered_reviews_data,
-)
-from api.api.models import ItemPayload, ProductInDb, ShoppingCartItem
 
 
 @tool
@@ -52,7 +51,7 @@ def get_formatted_item_context(query: str, top_k: int = 5) -> str:
         average rating.
     """
 
-    qdrant_client = QdrantClient(url="http://qdrant:6333")
+    qdrant_client = QdrantClient(url="http://localhost:6333")
     retrieved_context = retrieve_items_data(query, qdrant_client, k=20, hybrid=True)
 
     retrieved_context = rerank_data(query, retrieved_context, top_k=top_k)
@@ -75,7 +74,7 @@ def get_formatted_reviews_context(
         A string of the top k context chunks with IDs prepending each chunk, each representing a review for a given inventory item for a given query.
     """
 
-    qdrant_client = QdrantClient(url="http://qdrant:6333")
+    qdrant_client = QdrantClient(url="http://localhost:6333")
 
     retrieved_context = retrieve_prefiltered_reviews_data(
         query, parent_asins, qdrant_client, k=top_k
@@ -88,13 +87,15 @@ def get_formatted_reviews_context(
 ### Shopping Cart Tools
 
 
-DB_CONFIG = {
-    "host": "postgres",
-    "port": 5432,
-    "database": "tools_database",
-    "user": "tools_user",
-    "password": "tools_user_password",
-}
+class ProductInDb(TypedDict):
+    product_id: str
+    quantity: int
+
+
+items: list[ProductInDb] = [
+    ProductInDb(product_id="B0BWJMKC31", quantity=2),
+    ProductInDb(product_id="B0BT9PWL81", quantity=4),
+]
 
 
 @tool
@@ -110,7 +111,13 @@ def add_to_shopping_cart(items: list[ProductInDb], user_id: str, cart_id: str) -
         A list of the items added to the shopping cart.
     """
 
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = psycopg2.connect(
+        host="localhost",
+        port=5433,
+        database="tools_database",
+        user="tools_user",
+        password="tools_user_password",
+    )
     conn.autocommit = True
 
     with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -118,7 +125,7 @@ def add_to_shopping_cart(items: list[ProductInDb], user_id: str, cart_id: str) -
             product_id = item["product_id"]
             quantity = item["quantity"]
 
-            qdrant_client = QdrantClient(url="http://qdrant:6333")
+            qdrant_client = QdrantClient(url="http://localhost:6333")
 
             dummy_vector = np.zeros(1536).tolist()
             payload = ItemPayload.model_validate(
@@ -227,7 +234,13 @@ def remove_from_cart(product_id: str, user_id: str, cart_id: str) -> str:
         Information about the removal of the item from the shopping cart.
     """
 
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = psycopg2.connect(
+        host="localhost",
+        port=5433,
+        database="tools_database",
+        user="tools_user",
+        password="tools_user_password",
+    )
     conn.autocommit = True
 
     with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -244,11 +257,11 @@ def remove_from_cart(product_id: str, user_id: str, cart_id: str) -> str:
         )
 
 
-_product_type_adapter = TypeAdapter(ShoppingCartItem)
+_product_type_adapter = TypeAdapter(ProductInDb)
 
 
 @tool
-def get_shopping_cart(user_id: str, cart_id: str) -> list[ShoppingCartItem]:
+def get_shopping_cart(user_id: str, cart_id: str) -> list[ProductInDb]:
     """
     Retrieve all items in a user's shopping cart.
 
@@ -259,11 +272,14 @@ def get_shopping_cart(user_id: str, cart_id: str) -> list[ShoppingCartItem]:
     Returns:
         List of dictionaries containing cart items
     """
-    return get_shopping_cart_nontool(user_id, cart_id)
 
-
-def get_shopping_cart_nontool(user_id: str, cart_id: str) -> list[ShoppingCartItem]:
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = psycopg2.connect(
+        host="localhost",
+        port=5433,
+        database="tools_database",
+        user="tools_user",
+        password="tools_user_password",
+    )
     conn.autocommit = True
 
     with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -415,7 +431,13 @@ def check_warehouse_availability(items: list[CartItem]) -> AvailabilityCheck:
         - details: detailed breakdown per warehouse with availability for each item
     """
 
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = psycopg2.connect(
+        host="localhost",
+        port=5433,
+        database="tools_database",
+        user="tools_user",
+        password="tools_user_password",
+    )
 
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -567,7 +589,13 @@ def reserve_warehouse_items(
         so the rejected branch carries no reserved items at all.
     """
 
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = psycopg2.connect(
+        host="localhost",
+        port=5433,
+        database="tools_database",
+        user="tools_user",
+        password="tools_user_password",
+    )
     conn.autocommit = False  # Use transaction
 
     try:

@@ -1,11 +1,11 @@
 metadata:
-  name: QnA Agent Prompt
+  name: Product QnA Agent Prompt
   version: 1.1.0
-  description: QnA Agent Prompt
+  description: Product QnA Agent Prompt
   author: Boris Petrov
 
 prompts:
-  qna_agent: |
+  product_qna_agent: |
 
     You are a shopping assistant answering customer questions about products in stock.
 
