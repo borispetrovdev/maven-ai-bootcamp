@@ -6,6 +6,7 @@ from typing import Literal, TypedDict, assert_never
 import requests
 import streamlit as st
 from api.agents.graph import AgentStreamResponse
+from api.agents.tools import ShoppingCartItem
 from api.api.models import (
     AgentRequest,
     AgentResponse,
@@ -33,6 +34,7 @@ class AppState(BaseModel, validate_assignment=True):
     latest_feedback: Literal["positive", "negative"] | None = None
     feedback_submission_status: Literal["success", "error"] | None = None
     show_feedback_box: bool = False
+    shopping_cart: list[ShoppingCartItem] = []
 
 
 def get_state() -> AppState:
@@ -156,16 +158,28 @@ def submit_feedback(
 
 
 with st.sidebar:
-    if len(state.used_context) > 0:
-        (suggestions_tab,) = st.tabs(["🔍 Suggestions"])
+    (suggestions_tab, shopping_cart_tab) = st.tabs(
+        ["🔍 Suggestions", "🛒 Shopping Cart"]
+    )
 
-        with suggestions_tab:
-            for idx, item in enumerate(state.used_context):
-                st.caption(item.description)
-                st.image(item.image_url, width=250)
-                if (price := item.price) is not None:
-                    st.write(f"Price: ${price} USD")
-                st.divider()
+    with suggestions_tab:
+        for idx, item in enumerate(state.used_context):
+            st.caption(item.description)
+            st.image(item.image_url, width=250)
+            if (price := item.price) is not None:
+                st.write(f"Price: ${price} USD")
+            st.divider()
+
+    with shopping_cart_tab:
+        for idx, item in enumerate(state.shopping_cart):
+            st.caption(f"{item['product_id']}")
+            st.image(item["product_image_url"], width=250)
+            if (price := item["price"]) is not None:
+                st.write(f"Price: ${price} {item['currency']}")
+            st.write(f"Quantity: {item['quantity']}")
+            if (total_price := item["total_price"]) is not None:
+                st.write(f"Total Price: ${total_price} {item['currency']}")
+            st.divider()
 
 for idx, message in enumerate(state.messages):
     with st.chat_message(message.role):
@@ -288,6 +302,8 @@ if prompt := st.chat_input("Hello! How can I assist you today?"):
                             ChatMessage(role="assistant", content=data.answer)
                         )
                         state.trace_id = data.trace_id
+
+                        state.shopping_cart = data.shopping_cart
 
                         state.latest_feedback = None
                         state.show_feedback_box = False
